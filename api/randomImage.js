@@ -5,13 +5,17 @@ const cors = require('cors');
 
 const app = express();
 
-// 允许跨域
-app.use(cors({ origin: '*' }));
+// 使用cors中间件
+app.use(cors({
+  origin: '*'
+  // 或者指定特定的域名
+  // origin: 'https://www.api1.link'
+}));
 
-// 托管静态文件
+// Serve static files from the public directory
 app.use(express.static('public'));
 
-// 从单个 txt 文件读取随机图片链接（已修复 \r 问题）
+// 从指定文件中获取随机图像链接的函数
 const getRandomImage = (filePath) => {
   return new Promise((resolve, reject) => {
     fs.readFile(filePath, 'utf8', (err, data) => {
@@ -28,50 +32,58 @@ const getRandomImage = (filePath) => {
   });
 };
 
-// 读取目录下所有 txt 文件并合并后随机返回一条链接
+// 从所有文本文件中随机获取图片链接的函数
 const getRandomImageFromAllFiles = () => {
   return new Promise((resolve, reject) => {
-    const dirPath = __dirname;
+    const dirPath = path.join(__dirname);
     fs.readdir(dirPath, (err, files) => {
-      if (err) return reject(err);
-
-      const txtFiles = files.filter(f => f.endsWith('.txt'));
-      if (txtFiles.length === 0) return reject(new Error('No text files found'));
-
-      const promises = txtFiles.map(f => getRandomImage(path.join(dirPath, f)));
-      Promise.all(promises)
-        .then(results => {
-          const allImages = results.flat();
-          resolve(allImages[Math.floor(Math.random() * allImages.length)]);
-        })
-        .catch(reject);
+      if (err) {
+        reject(err);
+      } else {
+        const txtFiles = files.filter(file => file.endsWith('.txt'));
+        if (txtFiles.length === 0) {
+          reject(new Error('No text files found'));
+        } else {
+          const promises = txtFiles.map(file => getRandomImage(path.join(dirPath, file)));
+          Promise.all(promises)
+            .then(results => {
+              const allImages = results.flat();
+              const randomImage = allImages[Math.floor(Math.random() * allImages.length)];
+              resolve(randomImage);
+            })
+            .catch(reject);
+        }
+      }
     });
   });
 };
 
-// 随机跳转（所有类别）
+// 所有类别随机图像的路由
 app.get('/random', async (req, res) => {
   try {
     const imageUrl = await getRandomImageFromAllFiles();
     res.redirect(imageUrl);
-  } catch (e) {
+  } catch (error) {
     res.status(404).send('No images found');
   }
 });
 
-// 指定类别随机跳转
-app.get('/:category', async (req, res) => {
-  try {
-    const imageUrl = await getRandomImage(path.join(__dirname, `${req.params.category}.txt`));
-    res.redirect(imageUrl);
-  } catch (e) {
-    res.status(404).send('Category not found');
-  }
+// Default route to serve the documentation
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// 默认文档
-app.get('/', (_req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+// 指定类别随机图像的路由
+app.get('/:category', async (req, res) => {
+  const category = req.params.category;
+  const filePath = path.join(__dirname, `${category}.txt`);
+
+  try {
+    const imageUrl = await getRandomImage(filePath);
+    res.redirect(imageUrl);
+  } catch (error) {
+    res.status(404).send('Category not found');
+  }
 });
 
 module.exports = app;
